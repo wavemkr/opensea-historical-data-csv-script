@@ -9,6 +9,7 @@
 ## Running
 
 - Run the script directly using for example `node index --slug=doodles-official` in the terminal at the root of the folder.
+- The CSV file will be saved to the `/output` subfolder
 
 #### Parameters
 
