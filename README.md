@@ -8,11 +8,11 @@
 
 ## Running
 
-- Run the script directly using for example `npm run start --slug=doodles-official` in the terminal at the root of the folder.
+- Run the script directly using for example `node index --slug=doodles-official` in the terminal at the root of the folder.
 
 #### Parameters
 
-`--slug` The Opensea slug of the collection. This is required if contract is not specified.
-`--contract` The contract address of the collection. This is required if slug is not specified.
-`--outputFileName` The name of the CSV file to output. Optional.
-`--daysback` Number of days worth of data until the current date to pull back from Opensea. Optional.
+- `--slug` The Opensea slug of the collection. This is required if contract is not specified.
+- `--contract` The contract address of the collection. This is required if slug is not specified.
+- `--outputFileName` The name of the CSV file to output. Optional.
+- `--daysback` Number of days worth of data until the current date to pull back from Opensea. Optional.

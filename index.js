@@ -1,6 +1,9 @@
 import { config } from "dotenv-flow";
 import fs, { promises } from "fs";
+import logUpdate from "log-update";
 import fetch from "node-fetch";
+import { hideBin } from "yargs/helpers";
+import yargs from "yargs/yargs";
 
 config();
 
@@ -9,8 +12,9 @@ const sleep = (ms) =>
     setTimeout(resolve, ms);
   });
 
-const getHMS = (ms) => {
-  let seconds = ms / 1000;
+const getDuration = (startTime) => {
+  const duration = Date.now() - startTime;
+  let seconds = duration / 1000;
   // 2- Extract hours:
   const hours = parseInt(seconds / 3600); // 3,600 seconds in 1 hour
   seconds = seconds % 3600; // seconds remaining after extracting hours
@@ -19,7 +23,7 @@ const getHMS = (ms) => {
   // 4- Keep only seconds not extracted to minutes:
   seconds = parseInt(seconds % 60);
 
-  return { hours, minutes, seconds };
+  return { hours, minutes, seconds, duration };
 };
 
 const SPACES = " ".repeat(40);
@@ -45,21 +49,22 @@ const getOpenseaHeaders = () => {
 };
 
 const go = async () => {
+  const { argv } = yargs(hideBin(process.argv));
   const {
-    npm_config_slug: slug,
-    npm_config_contract: contract,
-    npm_config_outputFilename: outputFilename,
-    npm_config_daysback: days,
+    npm_config_slug,
+    npm_config_contract,
+    npm_config_outputFilename,
+    npm_config_daysback,
   } = process.env;
 
-  console.info(
-    `Requesting data from Opensea for "${slug || contract}"${
-      days ? ` from the last ${days} days` : " for all time."
-    }`
-  );
+  const {
+    slug = npm_config_slug,
+    contract = npm_config_contract,
+    days = npm_config_daysback,
+  } = argv;
+  let { filename = npm_config_outputFilename } = argv;
 
   let requestUrl = OPENSEA_URL;
-  let filename = outputFilename;
 
   const now = new Date();
 
@@ -89,26 +94,26 @@ const go = async () => {
   let reqCount = 0;
   let intervalCount = 0;
   let failedAttempts = 0;
+  let collectionName;
 
-  setInterval(() => {
-    const duration = Date.now() - startTime;
-    const { minutes, seconds } = getHMS(duration);
+  // Log interval to track progress
+  const interval = setInterval(() => {
+    const { minutes, seconds, duration } = getDuration(startTime);
     const fullMins = duration / 1000 / 60;
 
-    process.stdout.write(
-      `${`${DOTS.charAt(++intervalCount % DOTS.length)} ${"0".repeat(
+    logUpdate(
+      `${`${DOTS.charAt(++intervalCount % DOTS.length)} Fetching ${
+        collectionName || ""
+      } data | ${"0".repeat(
         Math.max(2 - String(minutes).length, 0)
       )}${minutes}`}:${`${"0".repeat(
         Math.max(2 - String(seconds).length, 0)
-      )}${seconds}`} - ${txCount} tx processed (~${Math.round(
+      )}${seconds}`} | ${txCount} tx downloaded at ${Math.round(
         txCount / fullMins
-      )}/min) in ${reqCount} requests (~${Math.round(
-        reqCount / fullMins
-      )}/min)${SPACES}\r`
+      )}/min${SPACES}`
     );
   }, LOG_INTERVAL);
-  let collectionName;
-  console.info("This can take several minutes...");
+
   do {
     try {
       const {
@@ -133,20 +138,21 @@ const go = async () => {
         }
         reqCount++;
         cursor = next;
-        asset_events.forEach(
-          ({
-            total_price,
-            event_timestamp,
-            payment_token: { decimals, eth_price },
-          }) => {
+        asset_events.forEach((e) => {
+          try {
+            const {
+              total_price,
+              event_timestamp,
+              payment_token: { decimals, eth_price },
+            } = e;
             const date = event_timestamp.split("T")[0];
             const priceEth = (total_price / 10 ** decimals) * Number(eth_price);
 
             if (!result[date]) result[date] = [priceEth];
             else result[date].push(priceEth);
             txCount++;
-          }
-        );
+          } catch {} // seems we get bad data occasionally, just ignore.
+        });
         if (!cursor) {
           loop = false;
         } else {
@@ -167,11 +173,14 @@ const go = async () => {
         process.stdout.write(
           ` Error fetching Opensea data x${failedAttempts}. Retrying in ${
             wait / 1000
-          } seconds.${SPACES}\r`
+          } seconds.${SPACES}`
         );
       }
     }
   } while (loop);
+
+  clearInterval(interval);
+  logUpdate(`  Aggregating transaction data...${SPACES}`);
 
   let rows = 0;
   const file = Object.entries(result).reduce((acc, [date, prices]) => {
@@ -193,24 +202,23 @@ const go = async () => {
     "_" +
     now
       .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      .replace(":", "-")
-      .replace(" ", "");
+      .replace(/:/g, "-")
+      .replace(/ /g, "");
+
+  collectionName = collectionName || slug || contract;
 
   if (!filename) {
-    filename = `${collectionName
-      .toLocaleLowerCase()
-      .replace(/ /g, "-")}_${dt}.csv`;
+    filename = `${
+      collectionName.toLocaleLowerCase().replace(/ /g, "-") || slug || contract
+    }_${dt}.csv`;
   }
   if (!filename?.endsWith(".csv")) filename += ".csv";
 
   await promises.writeFile(`output/${filename}`, file);
 
-  const duration = Date.now() - startTime;
-  let seconds = duration / 1000;
-  const minutes = parseInt(seconds / 60);
-  seconds = Math.round(seconds % 60);
+  const { seconds, minutes } = getDuration(startTime);
 
-  console.info(
+  logUpdate(
     `Completed in ${minutes}m ${seconds}s. ${rows} data rows written to output/${filename}${SPACES}`
   );
   process.exit(0);
