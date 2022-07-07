@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "description": "Script to generate historical Opensea data as CSV",
   "main": "index.js",
-  "repository": "https://github.com/wack-overflow/opensea-historical-data-csv-script.git",
-  "author": "Wack Overflow <cryptobilly37@gmail.com> <cryptobilly37@gmail.com>",
+  "repository": "REDACTED",
+  "author": "REDACTED",
   "license": "MIT",
   "private": true,
   "dependencies": {
